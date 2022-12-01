@@ -112,7 +112,7 @@ def test_simple():
     parser = CalcParser()
 
     result = parser.parse(lexer.tokenize('a = 3 + 4 * (5 + 6)'))
-    assert result == None
+    assert result is None
     assert parser.names['a'] == 47
 
     result = parser.parse(lexer.tokenize('3 + 4 * (5 + 6)'))

@@ -90,16 +90,16 @@ def encode_vector(items):
 # can be used as an integer when encoding instructions.
 
 class HexEnumMeta(enum.EnumMeta):
-    def __int__(cls):
-        return int(cls._encoding)
+    def __int__(self):
+        return int(self._encoding)
 
     __index__ = __int__
 
-    def __repr__(cls):
-        return cls.__name__
+    def __repr__(self):
+        return self.__name__
 
     @classmethod
-    def __prepare__(meta, name, bases, encoding=0):
+    def __prepare__(cls, name, bases, encoding=0):
         return super().__prepare__(name, bases)
 
     @staticmethod
@@ -344,17 +344,11 @@ class LocalBuilder(SubBuilder):
 
 class GlobalBuilder(SubBuilder):
     def get(self, glob):
-        if isinstance(glob, int):
-            globidx = glob
-        else:
-            globidx = glob.idx
+        globidx = glob if isinstance(glob, int) else glob.idx
         self._append([global_.get, *encode_unsigned(globidx)])
 
     def set(self, glob):
-        if isinstance(glob, int):
-            globidx = glob
-        else:
-            globidx = glob.idx
+        globidx = glob if isinstance(glob, int) else glob.idx
         self._append([global_.set, *encode_unsigned(globidx)])
 
 class MemoryBuilder(SubBuilder):
@@ -511,10 +505,7 @@ class InstructionBuilder:
             self._code.append([0x10, *encode_unsigned(func)])
 
     def call_indirect(self, typesig):
-        if isinstance(typesig, Type):
-            typeidx = typesig.idx
-        else:
-            typeidx = typesig
+        typeidx = typesig.idx if isinstance(typesig, Type) else typesig
         self._code.append([0x11, *encode_unsigned(typeidx), 0x00])
 
     def drop(self):
@@ -605,7 +596,7 @@ class Module:
 
         # Exported entities.  A module may export functions, globals,
         # tables, and memories
-        
+
         self.export_section = []           # Vector of exports
 
         # Optional start function.  A function that executes upon loading
@@ -632,9 +623,8 @@ class Module:
         enc = encode_function_type(parms, results)
         if enc in self.type_section:
             return Type(parms, results, self.type_section.index(enc))
-        else:
-            self.type_section.append(enc)
-            return Type(parms, results, len(self.type_section) - 1)
+        self.type_section.append(enc)
+        return Type(parms, results, len(self.type_section) - 1)
 
     def import_function(self, module, name, parms, results):
         if len(self.function_section) > 0:
@@ -747,8 +737,7 @@ class Module:
         if not contents:
             return b''
         contents_code = encode_vector(contents)
-        code = bytes([sectionid]) + encode_unsigned(len(contents_code)) + contents_code
-        return code
+        return bytes([sectionid]) + encode_unsigned(len(contents_code)) + contents_code
 
     def encode(self):
         for func in self.functions:
