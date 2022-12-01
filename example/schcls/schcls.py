@@ -89,7 +89,7 @@ class SchParser(Parser):
 
     @_("'(' operator exprlist ')'")
     def expression(self, p):
-        return '(' + p.operator.join(p.exprlist) + ')'
+        return f'({p.operator.join(p.exprlist)})'
     
     @_("'+'", "'-'", "'*'", "'/'")
     def operator(self, p):
@@ -97,11 +97,11 @@ class SchParser(Parser):
 
     @_("'(' name exprlist ')'")
     def expression(self, p):
-        return p.name + '(' + ','.join(p.exprlist) + ')'
+        return f'{p.name}(' + ','.join(p.exprlist) + ')'
 
     @_("'(' name ')'")
     def expression(self, p):
-        return p.name + '()'
+        return f'{p.name}()'
 
     @_('exprlist expression')
     def exprlist(self, p):

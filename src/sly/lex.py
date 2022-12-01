@@ -112,11 +112,11 @@ class LexerMetaDict(dict):
     def __setitem__(self, key, value):
         if isinstance(value, str):
             value = TokenStr(value, key, self.remap)
-            
+
         if isinstance(value, _Before):
             self.before[key] = value.tok
             value = TokenStr(value.pattern, key, self.remap)
-            
+
         if key in self and not isinstance(value, property):
             prior = self[key]
             if isinstance(prior, str):
@@ -129,9 +129,7 @@ class LexerMetaDict(dict):
 
     def __delitem__(self, key):
         self.delete.append(key)
-        if key not in self and key.isupper():
-            pass
-        else:
+        if key in self or not key.isupper():
             return super().__delitem__(key)
 
     def __getitem__(self, key):
@@ -153,10 +151,11 @@ class LexerMeta(type):
             def decorate(func):
                 pattern = '|'.join(f'({pat})' for pat in patterns )
                 if hasattr(func, 'pattern'):
-                    func.pattern = pattern + '|' + func.pattern
+                    func.pattern = f'{pattern}|{func.pattern}'
                 else:
                     func.pattern = pattern
                 return func
+
             return decorate
 
         d['_'] = _
@@ -222,7 +221,7 @@ class Lexer(metaclass=LexerMeta):
         for base in cls.__bases__:
             if isinstance(base, LexerMeta):
                 rules.extend(base._rules)
-                
+
         # Dictionary of previous rules
         existing = dict(rules)
 
@@ -230,14 +229,12 @@ class Lexer(metaclass=LexerMeta):
             if (key in cls._token_names) or key.startswith('ignore_') or hasattr(value, 'pattern'):
                 if callable(value) and not hasattr(value, 'pattern'):
                     raise LexerBuildError(f"function {value} doesn't have a regex pattern")
-                
+
                 if key in existing:
                     # The definition matches something that already existed in the base class.
                     # We replace it, but keep the original ordering
                     n = rules.index((key, existing[key]))
                     rules[n] = (key, value)
-                    existing[key] = value
-
                 elif isinstance(value, TokenStr) and key in cls._before:
                     before = cls._before[key]
                     if before in existing:
@@ -247,10 +244,9 @@ class Lexer(metaclass=LexerMeta):
                     else:
                         # Put at the end of the rule list
                         rules.append((key, value))
-                    existing[key] = value
                 else:
                     rules.append((key, value))
-                    existing[key] = value
+                existing[key] = value
 
             elif isinstance(value, str) and not key.startswith('_') and key not in {'ignore', 'literals'}:
                 raise LexerBuildError(f'{key} does not match a name in tokens')
@@ -282,9 +278,8 @@ class Lexer(metaclass=LexerMeta):
         remapped_toks = set()
         for d in cls._remapping.values():
             remapped_toks.update(d.values())
-            
-        undefined = remapped_toks - set(cls._token_names)
-        if undefined:
+
+        if undefined := remapped_toks - set(cls._token_names):
             missing = ', '.join(undefined)
             raise LexerBuildError(f'{missing} not included in token(s)')
 

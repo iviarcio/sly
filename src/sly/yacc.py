@@ -109,10 +109,7 @@ class YaccProduction:
         self._stack = stack
 
     def __getitem__(self, n):
-        if n >= 0:
-            return self._slice[n].value
-        else:
-            return self._stack[n].value
+        return self._slice[n].value if n >= 0 else self._stack[n].value
 
     def __setitem__(self, n, v):
         if n >= 0:
@@ -126,8 +123,7 @@ class YaccProduction:
     @property
     def lineno(self):
         for tok in self._slice:
-            lineno = getattr(tok, 'lineno', None)
-            if lineno:
+            if lineno := getattr(tok, 'lineno', None):
                 return lineno
         raise AttributeError('No line number found')
 
@@ -143,17 +139,15 @@ class YaccProduction:
     def end(self):
         result = None
         for tok in self._slice:
-            r = getattr(tok, 'end', None)
-            if r:
+            if r := getattr(tok, 'end', None):
                 result = r
         return result
     
     def __getattr__(self, name):
         if name in self._namemap:
             return self._namemap[name](self._slice)
-        else:
-            nameset = '{' + ', '.join(self._namemap) + '}'
-            raise AttributeError(f'No symbol {name}. Must be one of {nameset}.')
+        nameset = '{' + ', '.join(self._namemap) + '}'
+        raise AttributeError(f'No symbol {name}. Must be one of {nameset}.')
 
     def __setattr__(self, name, value):
         if name[:1] == '_':
@@ -202,7 +196,7 @@ class Production(object):
         self.file     = file
         self.line     = line
         self.prec     = precedence
-        
+
         # Internal settings used during table construction
         self.len  = len(self.prod)   # Length of the production
 
@@ -244,14 +238,14 @@ class Production(object):
                     namemap[k] = lambda s,i=index,n=n: ([x[n] for x in s[i].value]) if isinstance(s[i].value, list) else s[i].value[n]
 
         self.namemap = namemap
-                
+
         # List of all LR items for the production
         self.lr_items = []
         self.lr_next = None
 
     def __str__(self):
         if self.prod:
-            s = '%s -> %s' % (self.name, ' '.join(self.prod))
+            s = f"{self.name} -> {' '.join(self.prod)}"
         else:
             s = f'{self.name} -> <empty>'
 
@@ -268,7 +262,6 @@ class Production(object):
 
     def __nonzero__(self):
         raise RuntimeError('Used')
-        return 1
 
     def __getitem__(self, index):
         return self.prod[index]
@@ -326,11 +319,11 @@ class LRItem(object):
         self.usyms      = p.usyms
 
     def __str__(self):
-        if self.prod:
-            s = '%s -> %s' % (self.name, ' '.join(self.prod))
-        else:
-            s = f'{self.name} -> <empty>'
-        return s
+        return (
+            f"{self.name} -> {' '.join(self.prod)}"
+            if self.prod
+            else f'{self.name} -> <empty>'
+        )
 
     def __repr__(self):
         return f'LRItem({self})'
@@ -362,37 +355,18 @@ class GrammarError(YaccError):
 class Grammar(object):
     def __init__(self, terminals):
         self.Productions  = [None]  # A list of all of the productions.  The first
-                                    # entry is always reserved for the purpose of
-                                    # building an augmented grammar
-
         self.Prodnames    = {}      # A dictionary mapping the names of nonterminals to a list of all
-                                    # productions of that nonterminal.
-
         self.Prodmap      = {}      # A dictionary that is only used to detect duplicate
-                                    # productions.
-
-        self.Terminals    = {}      # A dictionary mapping the names of terminal symbols to a
-                                    # list of the rules where they are used.
-
-        for term in terminals:
-            self.Terminals[term] = []
-
+        self.Terminals = {term: [] for term in terminals}
         self.Terminals['error'] = []
 
         self.Nonterminals = {}      # A dictionary mapping names of nonterminals to a list
-                                    # of rule numbers where they are used.
-
         self.First        = {}      # A dictionary of precomputed FIRST(x) symbols
 
         self.Follow       = {}      # A dictionary of precomputed FOLLOW(x) symbols
 
         self.Precedence   = {}      # Precedence rules for each terminal. Contains tuples of the
-                                    # form ('right',level) or ('nonassoc', level) or ('left',level)
-
         self.UsedPrecedence = set() # Precedence rules that were actually used by the grammer.
-                                    # This is only used to provide error checking and to generate
-                                    # a warning about unused precedence rules.
-
         self.Start = None           # Starting symbol for the grammar
 
 
@@ -472,7 +446,7 @@ class Grammar(object):
             prodprec = self.Precedence.get(precname, ('right', 0))
 
         # See if the rule is already in the rulemap
-        map = '%s -> %s' % (prodname, syms)
+        map = f'{prodname} -> {syms}'
         if map in self.Prodmap:
             m = self.Prodmap[map]
             raise GrammarError(f'{file}:{line}: Duplicate rule {m}. ' +
@@ -554,11 +528,7 @@ class Grammar(object):
     # -----------------------------------------------------------------------------
 
     def infinite_cycles(self):
-        terminates = {}
-
-        # Terminals:
-        for t in self.Terminals:
-            terminates[t] = True
+        terminates = {t: True for t in self.Terminals}
 
         terminates['$end'] = True
 
@@ -571,22 +541,11 @@ class Grammar(object):
         # Then propagate termination until no change:
         while True:
             some_change = False
-            for (n, pl) in self.Prodnames.items():
+            for n, pl in self.Prodnames.items():
                 # Nonterminal n terminates iff any of its productions terminates.
                 for p in pl:
                     # Production p terminates iff all of its rhs symbols terminate.
-                    for s in p.prod:
-                        if not terminates[s]:
-                            # The symbol s does not terminate,
-                            # so production p does not terminate.
-                            p_terminates = False
-                            break
-                    else:
-                        # didn't break from the loop,
-                        # so every symbol s terminates
-                        # so production p terminates.
-                        p_terminates = True
-
+                    p_terminates = next((False for s in p.prod if not terminates[s]), True)
                     if p_terminates:
                         # symbol n terminates!
                         if not terminates[n]:
@@ -598,17 +557,12 @@ class Grammar(object):
             if not some_change:
                 break
 
-        infinite = []
-        for (s, term) in terminates.items():
-            if not term:
-                if s not in self.Prodnames and s not in self.Terminals and s != 'error':
-                    # s is used-but-not-defined, and we've already warned of that,
-                    # so it would be overkill to say that it's also non-terminating.
-                    pass
-                else:
-                    infinite.append(s)
-
-        return infinite
+        return [
+            s
+            for s, term in terminates.items()
+            if not term
+            and (s in self.Prodnames or s in self.Terminals or s == 'error')
+        ]
 
     # -----------------------------------------------------------------------------
     # undefined_symbols()
@@ -623,9 +577,14 @@ class Grammar(object):
             if not p:
                 continue
 
-            for s in p.prod:
-                if s not in self.Prodnames and s not in self.Terminals and s != 'error':
-                    result.append((s, p))
+            result.extend(
+                (s, p)
+                for s in p.prod
+                if s not in self.Prodnames
+                and s not in self.Terminals
+                and s != 'error'
+            )
+
         return result
 
     # -----------------------------------------------------------------------------
@@ -635,12 +594,7 @@ class Grammar(object):
     # a list of all symbols.
     # -----------------------------------------------------------------------------
     def unused_terminals(self):
-        unused_tok = []
-        for s, v in self.Terminals.items():
-            if s != 'error' and not v:
-                unused_tok.append(s)
-
-        return unused_tok
+        return [s for s, v in self.Terminals.items() if s != 'error' and not v]
 
     # ------------------------------------------------------------------------------
     # unused_rules()
@@ -650,12 +604,7 @@ class Grammar(object):
     # ------------------------------------------------------------------------------
 
     def unused_rules(self):
-        unused_prod = []
-        for s, v in self.Nonterminals.items():
-            if not v:
-                p = self.Prodnames[s][0]
-                unused_prod.append(p)
-        return unused_prod
+        return [self.Prodnames[s][0] for s, v in self.Nonterminals.items() if not v]
 
     # -----------------------------------------------------------------------------
     # unused_precedence()
@@ -667,12 +616,12 @@ class Grammar(object):
     # -----------------------------------------------------------------------------
 
     def unused_precedence(self):
-        unused = []
-        for termname in self.Precedence:
-            if not (termname in self.Terminals or termname in self.UsedPrecedence):
-                unused.append((termname, self.Precedence[termname][0]))
-
-        return unused
+        return [
+            (termname, self.Precedence[termname][0])
+            for termname in self.Precedence
+            if termname not in self.Terminals
+            and termname not in self.UsedPrecedence
+        ]
 
     # -------------------------------------------------------------------------
     # _first()
@@ -693,15 +642,10 @@ class Grammar(object):
             for f in self.First[x]:
                 if f == '<empty>':
                     x_produces_empty = True
-                else:
-                    if f not in result:
-                        result.append(f)
+                elif f not in result:
+                    result.append(f)
 
-            if x_produces_empty:
-                # We have to consider the next x in beta,
-                # i.e. stay in the loop.
-                pass
-            else:
+            if not x_produces_empty:
                 # We don't have to consider any further symbols in beta.
                 break
         else:
@@ -847,24 +791,23 @@ class Grammar(object):
     # description along with some diagnostics.
     # ----------------------------------------------------------------------
     def __str__(self):
-        out = []
-        out.append('Grammar:\n')
-        for n, p in enumerate(self.Productions):
-            out.append(f'Rule {n:<5d} {p}')
-        
-        unused_terminals = self.unused_terminals()
-        if unused_terminals:
+        out = ['Grammar:\n']
+        out.extend(f'Rule {n:<5d} {p}' for n, p in enumerate(self.Productions))
+        if unused_terminals := self.unused_terminals():
             out.append('\nUnused terminals:\n')
-            for term in unused_terminals:
-                out.append(f'    {term}')
-
+            out.extend(f'    {term}' for term in unused_terminals)
         out.append('\nTerminals, with rules where they appear:\n')
-        for term in sorted(self.Terminals):
-            out.append('%-20s : %s' % (term, ' '.join(str(s) for s in self.Terminals[term])))
+        out.extend(
+            '%-20s : %s' % (term, ' '.join(str(s) for s in self.Terminals[term]))
+            for term in sorted(self.Terminals)
+        )
 
         out.append('\nNonterminals, with rules where they appear:\n')
-        for nonterm in sorted(self.Nonterminals):
-            out.append('%-20s : %s' % (nonterm, ' '.join(str(s) for s in self.Nonterminals[nonterm])))
+        out.extend(
+            '%-20s : %s'
+            % (nonterm, ' '.join(str(s) for s in self.Nonterminals[nonterm]))
+            for nonterm in sorted(self.Nonterminals)
+        )
 
         out.append('')
         return '\n'.join(out)
@@ -894,9 +837,7 @@ class Grammar(object):
 # ------------------------------------------------------------------------------
 
 def digraph(X, R, FP):
-    N = {}
-    for x in X:
-        N[x] = 0
+    N = {x: 0 for x in X}
     stack = []
     F = {}
     for x in X:
@@ -1131,9 +1072,8 @@ class LRTable(object):
             for p in state:
                 if p.lr_index < p.len - 1:
                     t = (stateno, p.prod[p.lr_index+1])
-                    if t[1] in self.grammar.Nonterminals:
-                        if t not in trans:
-                            trans.append(t)
+                    if t[1] in self.grammar.Nonterminals and t not in trans:
+                        trans.append(t)
         return trans
 
     # -----------------------------------------------------------------------------
@@ -1154,9 +1094,8 @@ class LRTable(object):
         for p in g:
             if p.lr_index < p.len - 1:
                 a = p.prod[p.lr_index+1]
-                if a in self.grammar.Terminals:
-                    if a not in terms:
-                        terms.append(a)
+                if a in self.grammar.Terminals and a not in terms:
+                    terms.append(a)
 
         # This extra bit is to handle the start state
         if state == 0 and N == self.grammar.Productions[0].prod[0]:
@@ -1218,10 +1157,7 @@ class LRTable(object):
         includedict = {}       # Dictionary of include relations
 
         # Make a dictionary of non-terminal transitions
-        dtrans = {}
-        for t in trans:
-            dtrans[t] = 1
-
+        dtrans = {t: 1 for t in trans}
         # Loop over all transitions and compute lookbacks and includes
         for state, N in trans:
             lookb = []
@@ -1270,7 +1206,7 @@ class LRTable(object):
                     while i < r.lr_index:
                         if r.prod[i] != p.prod[i+1]:
                             break
-                        i = i + 1
+                        i += 1
                     else:
                         lookb.append((j, r))
             for i in includes:
@@ -1296,8 +1232,7 @@ class LRTable(object):
     def compute_read_sets(self, C, ntrans, nullable):
         FP = lambda x: self.dr_relation(C, x, nullable)
         R =  lambda x: self.reads_relation(C, x, nullable)
-        F = digraph(ntrans, R, FP)
-        return F
+        return digraph(ntrans, R, FP)
 
     # -----------------------------------------------------------------------------
     # compute_follow_sets()
@@ -1318,8 +1253,7 @@ class LRTable(object):
     def compute_follow_sets(self, ntrans, readsets, inclsets):
         FP = lambda x: readsets[x]
         R  = lambda x: inclsets.get(x, [])
-        F = digraph(ntrans, R, FP)
-        return F
+        return digraph(ntrans, R, FP)
 
     # -----------------------------------------------------------------------------
     # add_lookaheads()
